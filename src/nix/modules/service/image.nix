@@ -30,6 +30,7 @@ let
         {
           name = null; tag = null; contents = null; config = null;
           created = null; extraCommands = null; maxLayers = null;
+          fakeRootCommands = null;
         }
         args;
       acceptedArgs = functionArgs dockerTools.streamLayeredImage;
@@ -67,6 +68,8 @@ let
           ln -s $i nix/var/nix/gcroots/docker/$(basename $i)
         done;
       '';
+
+    fakeRootCommands = config.image.fakeRootCommands;
   };
 
   priorityIsDefault = option: option.highestPrio >= (lib.mkDefault true).priority;
@@ -76,18 +79,18 @@ in
     build.image = mkOption {
       type = nullOr package;
       description = ''
-        Docker image derivation to be `docker load`ed.
+        Docker image derivation to be `docker load`-ed.
       '';
       internal = true;
     };
     build.imageName = mkOption {
       type = str;
-      description = "Derived from build.image";
+      description = "Derived from `build.image`";
       internal = true;
     };
     build.imageTag = mkOption {
       type = str;
-      description = "Derived from build.image";
+      description = "Derived from `build.image`";
       internal = true;
     };
     image.nixBuild = mkOption {
@@ -120,13 +123,22 @@ in
          Top level paths in the container.
       '';
     };
+    image.fakeRootCommands = mkOption {
+      type = types.lines;
+      default = "";
+      description = ''
+        Commands that build the root of the container in the current working directory.
+
+        See [`dockerTools.buildLayeredImage`](https://nixos.org/manual/nixpkgs/stable/#ssec-pkgs-dockerTools-buildLayeredImage).
+      '';
+    };
     image.includeStorePaths = mkOption {
       type = bool;
       default = true;
       internal = true;
       description = ''
         Include all referenced store paths. You generally want this in your
-        image, unless you load store paths via some other means, like useHostStore = true;
+        image, unless you load store paths via some other means, like `useHostStore = true`;
       '';
     };
     image.rawConfig = mkOption {
@@ -140,8 +152,8 @@ in
         Please use the specific `image` options instead.
 
         Run-time configuration of the container. A full list of the
-        options is available in the https://github.com/moby/moby/blob/master/image/spec/v1.2.md#image-json-field-descriptions[Docker Image Specification
-        v1.2.0].
+        options is available in the [Docker Image Specification
+        v1.2.0](https://github.com/moby/moby/blob/master/image/spec/v1.2.md#image-json-field-descriptions).
       '';
     };
     image.command = mkOption {
@@ -151,17 +163,19 @@ in
       '';
     };
   };
-  config = {
-    build.image = builtImage;
-    build.imageName = config.build.image.imageName;
-    build.imageTag =
-                 if config.build.image.imageTag != ""
-                 then config.build.image.imageTag
-                 else lib.head (lib.strings.splitString "-" (baseNameOf config.build.image.outPath));
-
-    service.image = lib.mkDefault "${config.build.imageName}:${config.build.imageTag}";
-    image.rawConfig.Cmd = config.image.command;
-
-    image.nixBuild = lib.mkDefault (priorityIsDefault options.service.image);
-  };
+  config = lib.mkMerge [{
+      build.image = builtImage;
+      build.imageName = config.build.image.imageName;
+      build.imageTag =
+                   if config.build.image.imageTag != ""
+                   then config.build.image.imageTag
+                   else lib.head (lib.strings.splitString "-" (baseNameOf config.build.image.outPath));
+      image.rawConfig.Cmd = config.image.command;
+      image.nixBuild = lib.mkDefault (priorityIsDefault options.service.image);
+    }
+    ( lib.mkIf (config.service.build.context == null)
+    {
+      service.image = lib.mkDefault "${config.build.imageName}:${config.build.imageTag}";
+    })
+  ];
 }

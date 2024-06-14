@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, options, pkgs, ... }:
 let
   inherit (lib)
     any
@@ -29,6 +29,11 @@ let
       };
       rootless = mkEnableOption "Run this project in rootless mode";
       _systemd = mkOption { internal = true; };
+      serviceName = mkOption {
+        description = "The name of the Arion project's systemd service";
+        type = types.str;
+        default = ${config.serviceName};
+      };
     };
     config =
       let
@@ -52,13 +57,13 @@ let
     in
       if false then
       # if false then
-        { _systemd.user.services."arion-${name}" = service; }
+        { _systemd.user.services.${config.serviceName} = service; }
       else
-        { _systemd.services."arion-${name}" = service; };
+        { _systemd.services.${config.serviceName} = service; };
   };
 
   arionSettingsType = name:
-    (cfg.package.eval { modules = [ { project.name = lib.mkDefault name; } ]; }).type or (
+    (cfg.package.eval { modules = [{ project.name = lib.mkDefault name; }]; }).type or (
       throw "lib.evalModules did not produce a type. Please upgrade Nixpkgs to nixos-unstable or >=nixos-21.11"
     );
 
@@ -109,7 +114,10 @@ in
         virtualisation.docker.enable = false;
         virtualisation.podman.enable = true;
         virtualisation.podman.dockerSocket.enable = true;
-        virtualisation.podman.defaultNetwork.dnsname.enable = true;
+        virtualisation.podman.defaultNetwork = 
+          if options?virtualisation.podman.defaultNetwork.settings
+          then { settings.dns_enabled = true; } # since 2023-01 https://github.com/NixOS/nixpkgs/pull/199965
+          else { dnsname.enable = true; }; # compat <2023
 
         virtualisation.arion.docker.client.package = pkgs.docker-client;
       })
