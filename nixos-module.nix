@@ -32,7 +32,7 @@ let
       serviceName = mkOption {
         description = "The name of the Arion project's systemd service";
         type = types.str;
-        default = ${config.serviceName};
+        default = "arion-${name}";
       };
     };
     config =
